@@ -5611,6 +5611,116 @@ static PyObject* pybullet_getJointStates(PyObject* self, PyObject* args, PyObjec
 	Py_INCREF(Py_None);
 	return Py_None;
 }
+
+static PyObject* pybullet_getJointStates2(PyObject* self, PyObject* args, PyObject* keywds)
+{
+	PyObject* pyListJointState;
+	PyObject* jointIndicesObj = 0;
+	PyArrayObject* anglesObj;
+	PyArrayObject* speedsObj;
+
+	struct b3JointSensorState sensorState;
+
+	int bodyUniqueId = -1;
+	int sensorStateSize = 2;  // size of struct b3JointSensorState
+	int j;
+
+	b3PhysicsClientHandle sm = 0;
+	int physicsClientId = 0;
+	static char* kwlist[] = {"bodyUniqueId", "jointIndices", "angles", "speeds", "physicsClientId", NULL};
+	if (!PyArg_ParseTupleAndKeywords(args, keywds, "iOOO|i", kwlist, &bodyUniqueId, &jointIndicesObj, &anglesObj, &speedsObj, &physicsClientId))
+	{
+		return NULL;
+	}
+	sm = getPhysicsClient(physicsClientId);
+	if (sm == 0)
+	{
+		PyErr_SetString(SpamError, "Not connected to physics server.");
+		return NULL;
+	}
+
+	{
+		{
+			int i;
+			int status_type = 0;
+			int numRequestedJoints = 0;
+			PyObject* jointIndicesSeq = 0;
+			int numJoints = 0;
+			b3SharedMemoryCommandHandle cmd_handle;
+			b3SharedMemoryStatusHandle status_handle;
+
+			if (bodyUniqueId < 0)
+			{
+				PyErr_SetString(SpamError, "getJointState failed; invalid bodyUniqueId");
+				return NULL;
+			}
+			numJoints = b3GetNumJoints(sm, bodyUniqueId);
+			jointIndicesSeq = PySequence_Fast(jointIndicesObj, "expected a sequence of joint indices");
+
+			if (jointIndicesSeq == 0)
+			{
+				PyErr_SetString(SpamError, "expected a sequence of joint indices");
+				return NULL;
+			}
+
+			numRequestedJoints = PySequence_Size(jointIndicesObj);
+			if (numRequestedJoints == 0)
+			{
+				Py_DECREF(jointIndicesSeq);
+				Py_INCREF(Py_None);
+				return Py_None;
+			}
+
+			cmd_handle =
+				b3RequestActualStateCommandInit(sm, bodyUniqueId);
+			status_handle =
+				b3SubmitClientCommandAndWaitStatus(sm, cmd_handle);
+
+			status_type = b3GetStatusType(status_handle);
+			if (status_type != CMD_ACTUAL_STATE_UPDATE_COMPLETED)
+			{
+				PyErr_SetString(SpamError, "getJointState failed.");
+				return NULL;
+			}
+
+			int anglesStride = PyArray_STRIDE(anglesObj, 0);
+			float* angles = (float*)PyArray_DATA(anglesObj);
+
+			int speedsStride = PyArray_STRIDE(speedsObj, 0);
+			float* speeds = (float*)PyArray_DATA(speedsObj);
+
+			for (i = 0; i < numRequestedJoints; i++)
+			{
+				int jointIndex = pybullet_internalGetFloatFromSequence(jointIndicesSeq, i);
+				if ((jointIndex >= numJoints) || (jointIndex < 0))
+				{
+					Py_DECREF(jointIndicesSeq);
+					PyErr_SetString(SpamError, "Joint index out-of-range.");
+					return NULL;
+				}
+
+				if (b3GetJointState(sm, status_handle, jointIndex, &sensorState))
+				{
+					angles[i] = sensorState.m_jointPosition;
+					speeds[i] = sensorState.m_jointVelocity;
+				}
+				else
+				{
+					PyErr_SetString(SpamError, "getJointState failed (2).");
+					return NULL;
+				}
+
+			}
+			Py_DECREF(jointIndicesSeq);
+			Py_INCREF(Py_None);
+			return Py_None;
+		}
+	}
+
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
 static PyObject* pybullet_getLinkState(PyObject* self, PyObject* args, PyObject* keywds)
 {
 	PyObject* pyLinkState;
@@ -12436,7 +12546,10 @@ static PyMethodDef SpamMethods[] = {
 	{"getJointStates", (PyCFunction)pybullet_getJointStates, METH_VARARGS | METH_KEYWORDS,
 	 "Get the state (position, velocity etc) for multiple joints on a body."},
 
-	 { "getJointStateMultiDof", (PyCFunction)pybullet_getJointStateMultiDof, METH_VARARGS | METH_KEYWORDS,
+	{"getJointStates2", (PyCFunction)pybullet_getJointStates2, METH_VARARGS | METH_KEYWORDS,
+	 "Get the state (position and velocity) for multiple joints on a body."},
+
+	{ "getJointStateMultiDof", (PyCFunction)pybullet_getJointStateMultiDof, METH_VARARGS | METH_KEYWORDS,
 		"Get the state (position, velocity etc) for a joint on a body. (supports planar and spherical joints)" },
 
 	{ "getJointStatesMultiDof", (PyCFunction)pybullet_getJointStatesMultiDof, METH_VARARGS | METH_KEYWORDS,
