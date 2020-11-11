@@ -9837,6 +9837,88 @@ static PyObject* pybullet_getContactPointData(PyObject* self, PyObject* args, Py
 	return Py_None;
 }
 
+static PyObject* pybullet_getContactStates(PyObject* self, PyObject* args, PyObject* keywds)
+{
+	int bodyUniqueIdA = -1;
+	int linkIndexA = -2;
+	PyObject* bodyUniqueIdsBObj;
+	PyObject* linkIndicesBObj;
+	PyArrayObject* resultsObj;
+	
+
+	b3SharedMemoryCommandHandle commandHandle;
+	struct b3ContactInformation contactPointData;
+	b3SharedMemoryStatusHandle statusHandle;
+	int statusType;
+
+	static char* kwlist[] = {"bodyA", "linkIndexA", "bodiesB", "linkIndicesB", "results", "physicsClientId", NULL};
+
+	int physicsClientId = 0;
+	b3PhysicsClientHandle sm = 0;
+	if (!PyArg_ParseTupleAndKeywords(args, keywds, "iiOOO|i", kwlist,
+									 &bodyUniqueIdA, &linkIndexA, &bodyUniqueIdsBObj, &linkIndicesBObj, &resultsObj, &physicsClientId))
+		return NULL;
+
+	sm = getPhysicsClient(physicsClientId);
+	if (sm == 0)
+	{
+		PyErr_SetString(SpamError, "Not connected to physics server.");
+		return NULL;
+	}
+
+	commandHandle = b3InitRequestContactPointInformation(sm);
+	if (bodyUniqueIdA >= 0)
+	{
+		b3SetContactFilterBodyA(commandHandle, bodyUniqueIdA);
+	}
+	
+	if (linkIndexA >= -1)
+	{
+		b3SetContactFilterLinkA(commandHandle, linkIndexA);
+	}
+
+	statusHandle = b3SubmitClientCommandAndWaitStatus(sm, commandHandle);
+	statusType = b3GetStatusType(statusHandle);
+	if (statusType == CMD_CONTACT_POINT_INFORMATION_COMPLETED)
+	{
+		b3GetContactPointInformation(sm, &contactPointData);
+
+		int i, j, len, cBodyIdB, cLinkIdB;
+		float* results = (float*)PyArray_DATA(resultsObj);
+		// PyObject* seqbodyIdsB = PySequence_Fast(bodyUniqueIdsBObj, "expected a sequence of vertex positions");
+		// PyObject* seqlinkIdsB = PySequence_Fast(linkIndicesBObj, "expected a sequence of vertex positions");
+		len = PySequence_Size(bodyUniqueIdsBObj);
+
+
+		for (i = 0; i < contactPointData.m_numContactPoints; i++) 
+		{
+			if ((contactPointData.m_contactPointData[i].m_bodyUniqueIdB == cBodyIdB) && 
+			    (contactPointData.m_contactPointData[i].m_linkIndexB == cLinkIdB))
+			{
+				continue;
+			}
+
+			cBodyIdB = contactPointData.m_contactPointData[i].m_bodyUniqueIdB;
+			cLinkIdB = contactPointData.m_contactPointData[i].m_linkIndexB;
+
+
+			for (j = 0; j < len; j++)
+			{
+				if ((PyLong_AsLong(PySequence_GetItem(bodyUniqueIdsBObj, j)) == cBodyIdB) &&
+				    (PyLong_AsLong(PySequence_GetItem(linkIndicesBObj, j)) == cLinkIdB))
+				{
+					results[j] = 1;
+				}	
+			}
+		}
+
+		return PyFloat_FromDouble((contactPointData.m_numContactPoints) > 0 ? 1 : 0);
+	}
+
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
 static PyObject* pybullet_isNumpyEnabled(PyObject* self, PyObject* args, PyObject* keywds)
 {
 	int physicsClientId = 0;
@@ -12660,6 +12742,10 @@ static PyMethodDef SpamMethods[] = {
 	 "Return existing contact points after the stepSimulation command. "
 	 "Optional arguments one or two object unique "
 	 "ids, that need to be involved in the contact."},
+
+	{"getContactStates", (PyCFunction)pybullet_getContactStates, METH_VARARGS | METH_KEYWORDS,
+	 "Return existing contact points after the stepSimulation command. "
+	 "Sets contact state 0/1 for each body/link pair."},
 
 	{"getClosestPoints", (PyCFunction)pybullet_getClosestPointData, METH_VARARGS | METH_KEYWORDS,
 	 "Compute the closest points between two objects, if the distance is below a given threshold."
