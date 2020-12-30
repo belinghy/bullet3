@@ -5678,10 +5678,7 @@ static PyObject* pybullet_getJointStates2(PyObject* self, PyObject* args, PyObje
 				return NULL;
 			}
 
-			int anglesStride = PyArray_STRIDE(anglesObj, 0);
 			float* angles = (float*)PyArray_DATA(anglesObj);
-
-			int speedsStride = PyArray_STRIDE(speedsObj, 0);
 			float* speeds = (float*)PyArray_DATA(speedsObj);
 
 			for (i = 0; i < numRequestedJoints; i++)
@@ -5696,8 +5693,8 @@ static PyObject* pybullet_getJointStates2(PyObject* self, PyObject* args, PyObje
 
 				if (b3GetJointState(sm, status_handle, jointIndex, &sensorState))
 				{
-					angles[i] = sensorState.m_jointPosition;
-					speeds[i] = sensorState.m_jointVelocity;
+					angles[i] = (float)sensorState.m_jointPosition;
+					speeds[i] = (float)sensorState.m_jointVelocity;
 				}
 				else
 				{
