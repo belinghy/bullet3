@@ -10763,6 +10763,87 @@ static PyObject* pybullet_applyExternalForce(PyObject* self, PyObject* args, PyO
 	return Py_None;
 }
 
+static PyObject* pybullet_applyExternalForces(PyObject* self, PyObject* args, PyObject* keywds)
+{
+	{
+		PyObject* linkIndicesObj = 0;
+		PyArrayObject* forceObj;
+		PyArrayObject* posObj;
+
+		int objectUniqueId = -1, flags;
+		double force[3];
+		double position[3] = {0.0, 0.0, 0.0};
+
+		b3SharedMemoryCommandHandle command;
+		b3SharedMemoryStatusHandle statusHandle;
+		int physicsClientId = 0;
+		b3PhysicsClientHandle sm = 0;
+		static char* kwlist[] = {"objectUniqueId", "linkIndices",
+								 "forceObj", "posObj", "flags", "physicsClientId", NULL};
+
+		if (!PyArg_ParseTupleAndKeywords(args, keywds, "iOOOi|i", kwlist, &objectUniqueId, &linkIndicesObj,
+										 &forceObj, &posObj, &flags, &physicsClientId))
+		{
+			return NULL;
+		}
+
+		sm = getPhysicsClient(physicsClientId);
+		if (sm == 0)
+		{
+			PyErr_SetString(SpamError, "Not connected to physics server.");
+			return NULL;
+		}
+
+		if ((flags != EF_WORLD_FRAME) && (flags != EF_LINK_FRAME))
+		{
+			PyErr_SetString(SpamError, "flag has to be either WORLD_FRAME or LINK_FRAME");
+			return NULL;
+		}
+
+		PyObject* linkIndicesSeq = 0;
+		linkIndicesSeq = PySequence_Fast(linkIndicesObj, "expected a sequence of link indices");
+
+		if (linkIndicesSeq == 0)
+		{
+			PyErr_SetString(SpamError, "expected a sequence of joint indices");
+			return NULL;
+		}
+
+		int numRequestedLinks = PySequence_Size(linkIndicesObj);
+
+		float* forces = (float*)PyArray_DATA(forceObj);
+		float* positions = (float*)PyArray_DATA(posObj);
+
+		int link = -1;
+		for (link=0;link<numRequestedLinks;link++)
+		{
+			int linkIndex = pybullet_internalGetIntFromSequence(linkIndicesSeq, link);
+			
+			int i;
+			for (i = 0; i < 3; i++)
+			{
+				force[i] = forces[link*3 + i];
+				printf("force %d: %f\n", i, force[i]);
+			}
+
+			for (i = 0; i < 3; i++)
+			{
+				position[i] = positions[link*3 + i];
+				printf("position %d: %f\n", i, position[i]);
+			}
+
+			command = b3ApplyExternalForceCommandInit(sm);
+			b3ApplyExternalForce(command, objectUniqueId, linkIndex, force, position, flags);
+			statusHandle = b3SubmitClientCommandAndWaitStatus(sm, command);
+		}
+
+		Py_DECREF(linkIndicesSeq);
+	}
+
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
 static PyObject* pybullet_applyExternalTorque(PyObject* self, PyObject* args, PyObject* keywds)
 {
 	{
@@ -12819,6 +12900,9 @@ static PyMethodDef SpamMethods[] = {
 	 "for objectUniqueId, linkIndex (-1 for base/root link), apply a force "
 	 "[x,y,z] at the a position [x,y,z], flag to select FORCE_IN_LINK_FRAME or "
 	 "WORLD_FRAME coordinates"},
+
+	 {"applyExternalForces", (PyCFunction)pybullet_applyExternalForces, METH_VARARGS | METH_KEYWORDS,
+	 "same as applyExternalForce, but multiple"},
 
 	{"applyExternalTorque", (PyCFunction)pybullet_applyExternalTorque, METH_VARARGS | METH_KEYWORDS,
 	 "for objectUniqueId, linkIndex (-1 for base/root link) apply a torque "
