@@ -440,10 +440,6 @@ static PyObject* pybullet_connectPhysicsServer(PyObject* self, PyObject* args, P
 			int i;
 			argv = urdfStrSplit(options, " ");
 			argc = urdfStrArrayLen(argv);
-			for (i = 0; i < argc; i++)
-			{
-				printf("argv[%d]=%s\n", i, argv[i]);
-			}
 		}
 		switch (method)
 		{
@@ -5614,7 +5610,6 @@ static PyObject* pybullet_getJointStates(PyObject* self, PyObject* args, PyObjec
 
 static PyObject* pybullet_getJointStates2(PyObject* self, PyObject* args, PyObject* keywds)
 {
-	PyObject* pyListJointState;
 	PyObject* jointIndicesObj = 0;
 	PyArrayObject* anglesObj;
 	PyArrayObject* speedsObj;
@@ -6057,6 +6052,125 @@ static PyObject* pybullet_getLinkStates(PyObject* self, PyObject* args, PyObject
 			}
 			Py_DECREF(linkIndicesSeq);
 			return resultListLinkState;
+		}
+	}
+
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
+static PyObject* pybullet_getLinkStates2(PyObject* self, PyObject* args, PyObject* keywds)
+{
+	PyObject* linkIndicesObj = 0;
+	PyArrayObject* outputObj;
+
+	struct b3LinkState linkState;
+
+	int bodyUniqueId = -1;
+	
+	int computeLinkVelocity = 0;
+	int computeForwardKinematics = 0;
+
+	
+	b3PhysicsClientHandle sm = 0;
+
+	int physicsClientId = 0;
+	static char* kwlist[] = { "bodyUniqueId", "linkIndices", "output", "computeLinkVelocity", "computeForwardKinematics", "physicsClientId", NULL };
+	if (!PyArg_ParseTupleAndKeywords(args, keywds, "iOO|iii", kwlist, &bodyUniqueId, &linkIndicesObj, &outputObj, &computeLinkVelocity, &computeForwardKinematics, &physicsClientId))
+	{
+		return NULL;
+	}
+
+	float* output = (float*)PyArray_DATA(outputObj);
+
+	sm = getPhysicsClient(physicsClientId);
+	if (sm == 0)
+	{
+		PyErr_SetString(SpamError, "Not connected to physics server.");
+		return NULL;
+	}
+
+	{
+		{
+			int status_type = 0;
+			b3SharedMemoryCommandHandle cmd_handle;
+			b3SharedMemoryStatusHandle status_handle;
+			PyObject* linkIndicesSeq = 0;
+			int numRequestedLinks = -1;
+			int numJoints = 0;
+			int link = -1;
+
+			if (bodyUniqueId < 0)
+			{
+				PyErr_SetString(SpamError, "getLinkState failed; invalid bodyUniqueId");
+				return NULL;
+			}
+		
+			cmd_handle =
+				b3RequestActualStateCommandInit(sm, bodyUniqueId);
+
+			if (computeLinkVelocity)
+			{
+				b3RequestActualStateCommandComputeLinkVelocity(cmd_handle, computeLinkVelocity);
+			}
+
+			if (computeForwardKinematics)
+			{
+				b3RequestActualStateCommandComputeForwardKinematics(cmd_handle, computeForwardKinematics);
+			}
+
+			status_handle =
+				b3SubmitClientCommandAndWaitStatus(sm, cmd_handle);
+
+			status_type = b3GetStatusType(status_handle);
+			if (status_type != CMD_ACTUAL_STATE_UPDATE_COMPLETED)
+			{
+				PyErr_SetString(SpamError, "getLinkState failed.");
+				return NULL;
+			}
+
+			linkIndicesSeq = PySequence_Fast(linkIndicesObj, "expected a sequence of link indices");
+
+			if (linkIndicesSeq == 0)
+			{
+				PyErr_SetString(SpamError, "expected a sequence of joint indices");
+				return NULL;
+			}
+
+			numRequestedLinks = PySequence_Size(linkIndicesObj);
+			numJoints = b3GetNumJoints(sm, bodyUniqueId);
+
+			for (link=0;link<numRequestedLinks;link++)
+			{
+				int linkIndex = pybullet_internalGetIntFromSequence(linkIndicesSeq, link);
+				if ((linkIndex < numJoints) || (linkIndex >= 0))
+				{
+					if (b3GetLinkState(sm, status_handle, linkIndex, &linkState))
+					{
+						// Position
+						output[link * 10 + 0] = (float)linkState.m_worldPosition[0];
+						output[link * 10 + 1] = (float)linkState.m_worldPosition[1];
+						output[link * 10 + 2] = (float)linkState.m_worldPosition[2];
+						
+						// Orientation
+						output[link * 10 + 3] = (float)linkState.m_worldOrientation[0];
+						output[link * 10 + 4] = (float)linkState.m_worldOrientation[1];
+						output[link * 10 + 5] = (float)linkState.m_worldOrientation[2];
+						output[link * 10 + 6] = (float)linkState.m_worldOrientation[3];
+						
+						// Velocity
+						if (computeLinkVelocity)
+						{
+							output[link * 10 + 7] = (float)linkState.m_worldLinearVelocity[0];
+							output[link * 10 + 8] = (float)linkState.m_worldLinearVelocity[1];
+							output[link * 10 + 9] = (float)linkState.m_worldLinearVelocity[2];
+						}						
+					}
+				}
+			}
+			Py_DECREF(linkIndicesSeq);
+			Py_INCREF(Py_None);
+			return Py_None;
 		}
 	}
 
@@ -12651,6 +12765,9 @@ static PyMethodDef SpamMethods[] = {
 
 	 { "getLinkStates", (PyCFunction)pybullet_getLinkStates, METH_VARARGS | METH_KEYWORDS,
 	"same as getLinkState except it takes a list of linkIndices" },
+
+	{ "getLinkStates2", (PyCFunction)pybullet_getLinkStates2, METH_VARARGS | METH_KEYWORDS,
+	"Get the state (position, orientation, velocity) for multiple links" },
 
 	{"resetJointState", (PyCFunction)pybullet_resetJointState, METH_VARARGS | METH_KEYWORDS,
 	 "resetJointState(objectUniqueId, jointIndex, targetValue, targetVelocity=0, physicsClientId=0)\n"
