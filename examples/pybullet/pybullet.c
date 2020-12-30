@@ -10822,14 +10822,12 @@ static PyObject* pybullet_applyExternalForces(PyObject* self, PyObject* args, Py
 			int i;
 			for (i = 0; i < 3; i++)
 			{
-				force[i] = forces[link*3 + i];
-				printf("force %d: %f\n", i, force[i]);
+				force[i] = (double)(forces[link*3 + i]);
 			}
 
 			for (i = 0; i < 3; i++)
 			{
-				position[i] = positions[link*3 + i];
-				printf("position %d: %f\n", i, position[i]);
+				position[i] = (double)(positions[link*3 + i]);
 			}
 
 			command = b3ApplyExternalForceCommandInit(sm);
