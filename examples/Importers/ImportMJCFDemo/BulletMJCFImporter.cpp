@@ -1918,7 +1918,6 @@ void BulletMJCFImporter::convertURDFToVisualShapeInternal(const UrdfVisual* visu
 			//		int index = 0;
 			glmesh->m_indices = new b3AlignedObjectArray<int>();
 			glmesh->m_vertices = new b3AlignedObjectArray<GLInstanceVertex>();
-			printf("vertices:\n");
 			for (int i = 0; i < numVertices; i++)
 			{
 				btVector3 vert;
