@@ -6059,7 +6059,9 @@ static PyObject* pybullet_getLinkStates(PyObject* self, PyObject* args, PyObject
 static PyObject* pybullet_getLinkStates2(PyObject* self, PyObject* args, PyObject* keywds)
 {
 	PyObject* linkIndicesObj = 0;
-	PyArrayObject* outputObj;
+	PyArrayObject* outPositionObj = 0;
+	PyArrayObject* outOrientationObj = 0;
+	PyArrayObject* outVelocityObj = 0;
 
 	struct b3LinkState linkState;
 
@@ -6072,13 +6074,30 @@ static PyObject* pybullet_getLinkStates2(PyObject* self, PyObject* args, PyObjec
 	b3PhysicsClientHandle sm = 0;
 
 	int physicsClientId = 0;
-	static char* kwlist[] = { "bodyUniqueId", "linkIndices", "output", "computeLinkVelocity", "computeForwardKinematics", "physicsClientId", NULL };
-	if (!PyArg_ParseTupleAndKeywords(args, keywds, "iOO|iii", kwlist, &bodyUniqueId, &linkIndicesObj, &outputObj, &computeLinkVelocity, &computeForwardKinematics, &physicsClientId))
+	static char* kwlist[] = { "bodyUniqueId", "linkIndices", "outPositions", "outOrientations", "outVelocities", "computeLinkVelocity", "computeForwardKinematics", "physicsClientId", NULL };
+	if (!PyArg_ParseTupleAndKeywords(args, keywds, "iO|OOOiii", kwlist, &bodyUniqueId, &linkIndicesObj, &outPositionObj, &outOrientationObj, &outVelocityObj, &computeLinkVelocity, &computeForwardKinematics, &physicsClientId))
 	{
 		return NULL;
 	}
 
-	float* output = (float*)PyArray_DATA(outputObj);
+	float* outPosition;
+	float* outOrientation;
+	float* outVelocity;
+
+	if (outPositionObj)
+	{
+		outPosition = (float*)PyArray_DATA(outPositionObj);
+	}
+
+	if (outOrientationObj)
+	{
+		outOrientation = (float*)PyArray_DATA(outOrientationObj);
+	}
+
+	if (outVelocityObj)
+	{
+		outVelocity = (float*)PyArray_DATA(outVelocityObj);
+	}
 
 	sm = getPhysicsClient(physicsClientId);
 	if (sm == 0)
@@ -6144,24 +6163,31 @@ static PyObject* pybullet_getLinkStates2(PyObject* self, PyObject* args, PyObjec
 				{
 					if (b3GetLinkState(sm, status_handle, linkIndex, &linkState))
 					{
-						// Position
-						output[link * 10 + 0] = (float)linkState.m_worldPosition[0];
-						output[link * 10 + 1] = (float)linkState.m_worldPosition[1];
-						output[link * 10 + 2] = (float)linkState.m_worldPosition[2];
-						
-						// Orientation
-						output[link * 10 + 3] = (float)linkState.m_worldOrientation[0];
-						output[link * 10 + 4] = (float)linkState.m_worldOrientation[1];
-						output[link * 10 + 5] = (float)linkState.m_worldOrientation[2];
-						output[link * 10 + 6] = (float)linkState.m_worldOrientation[3];
-						
-						// Velocity
-						if (computeLinkVelocity)
+
+						if (outPositionObj)
 						{
-							output[link * 10 + 7] = (float)linkState.m_worldLinearVelocity[0];
-							output[link * 10 + 8] = (float)linkState.m_worldLinearVelocity[1];
-							output[link * 10 + 9] = (float)linkState.m_worldLinearVelocity[2];
-						}						
+							// Position
+							outPosition[link * 3 + 0] = (float)linkState.m_worldPosition[0];
+							outPosition[link * 3 + 1] = (float)linkState.m_worldPosition[1];
+							outPosition[link * 3 + 2] = (float)linkState.m_worldPosition[2];
+						}
+
+						if (outOrientationObj)
+						{
+							// Orientation
+							outOrientation[link * 4 + 0] = (float)linkState.m_worldOrientation[0];
+							outOrientation[link * 4 + 1] = (float)linkState.m_worldOrientation[1];
+							outOrientation[link * 4 + 2] = (float)linkState.m_worldOrientation[2];
+							outOrientation[link * 4 + 3] = (float)linkState.m_worldOrientation[3];
+						}
+
+						if (computeLinkVelocity && outVelocityObj)
+						{
+							// Velocity
+							outVelocity[link * 3 + 0] = (float)linkState.m_worldLinearVelocity[0];
+							outVelocity[link * 3 + 1] = (float)linkState.m_worldLinearVelocity[1];
+							outVelocity[link * 3 + 2] = (float)linkState.m_worldLinearVelocity[2];
+						}		
 					}
 				}
 			}
