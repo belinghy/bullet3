@@ -4489,6 +4489,92 @@ static PyObject* pybullet_resetJointState(PyObject* self, PyObject* args, PyObje
 
 
 // Initalize all joint positions given a list of values
+static PyObject* pybullet_resetJointStates(PyObject* self, PyObject* args, PyObject* keywds)
+{
+	{
+		int bodyUniqueId;
+
+		PyObject* jointIndicesObj = 0;
+		PyArrayObject* targetValuesObj = 0;
+		PyArrayObject* targetVelocitiesObj = 0;
+		PyObject* jointIndicesSeq = 0;
+
+		b3PhysicsClientHandle sm = 0;
+
+		int physicsClientId = 0;
+		static char* kwlist[] = {"bodyUniqueId", "jointIndices", "targetValues", "targetVelocities", "physicsClientId", NULL};
+		if (!PyArg_ParseTupleAndKeywords(args, keywds, "iOO|Oi", kwlist, &bodyUniqueId, &jointIndicesObj, &targetValuesObj, &targetVelocitiesObj, &physicsClientId))
+		{
+			return NULL;
+		}
+		sm = getPhysicsClient(physicsClientId);
+		if (sm == 0)
+		{
+			PyErr_SetString(SpamError, "Not connected to physics server.");
+			return NULL;
+		}
+
+		{
+			b3SharedMemoryCommandHandle commandHandle;
+			b3SharedMemoryStatusHandle statusHandle;
+
+			jointIndicesSeq = PySequence_Fast(jointIndicesObj, "expected a sequence of joint indices");
+
+			if (jointIndicesSeq == 0)
+			{
+				PyErr_SetString(SpamError, "expected a sequence of joint indices");
+				return NULL;
+			}
+
+			float* targetValues;
+			float* targetVelocities;
+
+			if (targetValuesObj)
+			{
+				targetValues = (float*)PyArray_DATA(targetValuesObj);
+			}
+
+			if (targetVelocitiesObj)
+			{
+				targetVelocities = (float*)PyArray_DATA(targetVelocitiesObj);
+			}
+
+			commandHandle = b3CreatePoseCommandInit(sm, bodyUniqueId);
+
+			int joint = -1;
+			int numJoints = PySequence_Size(jointIndicesObj);
+			int totalJonits = b3GetNumJoints(sm, bodyUniqueId);
+
+			for (joint=0;joint<numJoints;joint++)
+			{
+				int jointIndex = pybullet_internalGetIntFromSequence(jointIndicesSeq, joint);
+
+				if ((jointIndex < totalJonits) && (jointIndex > 0))
+				{
+					double targetValue = (double)(targetValues[joint]);
+					b3CreatePoseCommandSetJointPosition(
+						sm, commandHandle, jointIndex, targetValue
+					);
+
+					if (targetVelocitiesObj)
+					{
+						double targetVelocity = (double)(targetVelocities[joint]);
+						b3CreatePoseCommandSetJointVelocity(
+							sm, commandHandle, jointIndex, targetVelocity
+						);
+					}
+				}
+			}
+
+			statusHandle = b3SubmitClientCommandAndWaitStatus(sm, commandHandle);
+		}
+		Py_DECREF(jointIndicesSeq);
+	}
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
+// Initalize all joint positions given a list of values
 static PyObject* pybullet_resetJointStatesMultiDof(PyObject* self, PyObject* args, PyObject* keywds)
 {
 	{
@@ -12875,6 +12961,9 @@ static PyMethodDef SpamMethods[] = {
 	 "resetJointState(objectUniqueId, jointIndex, targetValue, targetVelocity=0, physicsClientId=0)\n"
 	 "Reset the state (position, velocity etc) for a joint on a body "
 	 "instantaneously, not through physics simulation."},
+
+	{"resetJointStates", (PyCFunction)pybullet_resetJointStates, METH_VARARGS | METH_KEYWORDS,
+	 "same as resetJointState except it takes a list of linkIndices" },
 
 	{"resetJointStateMultiDof", (PyCFunction)pybullet_resetJointStateMultiDof, METH_VARARGS | METH_KEYWORDS,
 	 "resetJointStateMultiDof(objectUniqueId, jointIndex, targetValue, targetVelocity=0, physicsClientId=0)\n"
