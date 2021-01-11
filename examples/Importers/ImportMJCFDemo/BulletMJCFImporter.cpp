@@ -1248,6 +1248,11 @@ struct BulletMJCFImporterInternalData
 			{
 				btVector3 inertialShift(0, 0, 0);
 				parseGeom(curDefaults, xml, modelIndex, orgChildLinkIndex, logger, inertialShift);
+				const char* m = xml->Attribute("mass");
+				if (m)
+				{
+					mass = urdfLexicalCast<double>(m);
+				}
 				if (!massDefined)
 				{
 					localInertialFrame.setOrigin(inertialShift);
@@ -1297,7 +1302,7 @@ struct BulletMJCFImporterInternalData
 		}
 
 		//check mass/inertia
-		if (!massDefined)
+		if (mass == 0 && !massDefined)
 		{
 			double density = 1000;
 			double volume = computeVolume(linkPtr, logger);
