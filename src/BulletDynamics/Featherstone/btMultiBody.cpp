@@ -125,7 +125,8 @@ btMultiBody::btMultiBody(int n_links,
 	  m_posVarCnt(0),
 	  m_useRK4(false),
 	  m_useGlobalVelocities(false),
-	  m_internalNeedsJointFeedback(false)
+	  m_internalNeedsJointFeedback(false),
+		m_kinematic_calculate_velocity(false)
 {
 	m_cachedInertiaTopLeft.setValue(0, 0, 0, 0, 0, 0, 0, 0, 0);
 	m_cachedInertiaTopRight.setValue(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -898,7 +899,7 @@ void btMultiBody::computeAccelerationsArticulatedBodyAlgorithmMultiDof(btScalar 
 
 		// calculate zhat_i^A
 		//
-		if (isLinkAndAllAncestorsStaticOrKinematic(i))
+		if (isLinkAndAllAncestorsKinematic(i))
 		{
 			zeroAccSpatFrc[i].setZero();
 		}
@@ -967,7 +968,7 @@ void btMultiBody::computeAccelerationsArticulatedBodyAlgorithmMultiDof(btScalar 
 	// (part of TreeForwardDynamics in Mirtich.)
 	for (int i = num_links - 1; i >= 0; --i)
 	{
-		if(isLinkAndAllAncestorsStaticOrKinematic(i))
+		if(isLinkAndAllAncestorsKinematic(i))
 			continue;
 		const int parent = m_links[i].m_parent;
 		fromParent.m_rotMat = rot_from_parent[i + 1];
@@ -1115,7 +1116,7 @@ void btMultiBody::computeAccelerationsArticulatedBodyAlgorithmMultiDof(btScalar 
 
 		fromParent.transform(spatAcc[parent + 1], spatAcc[i + 1]);
 
-		if(!isLinkStaticOrKinematic(i))
+		if(!isLinkAndAllAncestorsKinematic(i))
 		{
 			for (int dof = 0; dof < m_links[i].m_dofCount; ++dof)
 			{
@@ -1410,7 +1411,7 @@ void btMultiBody::solveImatrix(const btSpatialForceVector &rhs, btSpatialMotionV
 	}
 }
 
-void btMultiBody::mulMatrix(btScalar *pA, btScalar *pB, int rowsA, int colsA, int rowsB, int colsB, btScalar *pC) const
+void btMultiBody::mulMatrix(const btScalar *pA, const btScalar *pB, int rowsA, int colsA, int rowsB, int colsB, btScalar *pC) const
 {
 	for (int row = 0; row < rowsA; row++)
 	{
@@ -1487,7 +1488,7 @@ void btMultiBody::calcAccelerationDeltasMultiDof(const btScalar *force, btScalar
 	// (part of TreeForwardDynamics in Mirtich.)
 	for (int i = num_links - 1; i >= 0; --i)
 	{
-		if(isLinkStaticOrKinematic(i))
+		if(isLinkAndAllAncestorsKinematic(i))
 			continue;
 		const int parent = m_links[i].m_parent;
 		fromParent.m_rotMat = rot_from_parent[i + 1];
@@ -1545,7 +1546,7 @@ void btMultiBody::calcAccelerationDeltasMultiDof(const btScalar *force, btScalar
 	// now do the loop over the m_links
 	for (int i = 0; i < num_links; ++i)
 	{
-		if(isLinkStaticOrKinematic(i))
+		if(isLinkAndAllAncestorsKinematic(i))
 			continue;
 		const int parent = m_links[i].m_parent;
 		fromParent.m_rotMat = rot_from_parent[i + 1];
@@ -2381,7 +2382,7 @@ const char *btMultiBody::serialize(void *dataBuffer, class btSerializer *seriali
 void btMultiBody::saveKinematicState(btScalar timeStep)
 {
 	//todo: clamp to some (user definable) safe minimum timestep, to limit maximum angular/linear velocities
-	if (timeStep != btScalar(0.))
+	if (m_kinematic_calculate_velocity && timeStep != btScalar(0.))
 	{
 		btVector3 linearVelocity, angularVelocity;
 		btTransformUtil::calculateVelocity(getInterpolateBaseWorldTransform(), getBaseWorldTransform(), timeStep, linearVelocity, angularVelocity);
@@ -2420,6 +2421,20 @@ bool btMultiBody::isLinkStaticOrKinematic(const int i) const
 	return false;
 }
 
+bool btMultiBody::isLinkKinematic(const int i) const
+{
+	if (i == -1)
+	{
+		return isBaseKinematic();
+	}
+	else
+	{
+		if (m_links[i].m_collider)
+			return m_links[i].m_collider->isKinematic();
+	}
+	return false;
+}
+
 bool btMultiBody::isLinkAndAllAncestorsStaticOrKinematic(const int i) const
 {
 	int link = i;
@@ -2429,4 +2444,15 @@ bool btMultiBody::isLinkAndAllAncestorsStaticOrKinematic(const int i) const
 		link = m_links[link].m_parent;
 	}
 	return isBaseStaticOrKinematic();
+}
+
+bool btMultiBody::isLinkAndAllAncestorsKinematic(const int i) const
+{
+	int link = i;
+	while (link != -1) {
+		if (!isLinkKinematic(link))
+			return false;
+		link = m_links[link].m_parent;
+	}
+	return isBaseKinematic();
 }
